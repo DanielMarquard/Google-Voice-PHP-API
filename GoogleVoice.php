@@ -4,6 +4,7 @@ class GoogleVoice {
 	// Google account credentials.
 	private $_login;
 	private $_pass;
+	private $_recoveryEmail;
 
 	// Special string that Google requires in our POST requests.
 	private $_rnr_se;
@@ -17,9 +18,10 @@ class GoogleVoice {
 	// Are we logged in already?
 	private $_loggedIn = FALSE;
 
-	public function __construct($login, $pass) {
+	public function __construct($login, $pass, $recoveryEmail = NULL) {
 		$this->_login = $login;
 		$this->_pass = $pass;
+		$this->_recoveryEmail = $recoveryEmail;
 		$this->_cookieFile = '/tmp/gvCookies.txt';
 
 		$this->_ch = curl_init();
@@ -57,6 +59,25 @@ class GoogleVoice {
 			'service' => 'grandcentral',
 			'signIn' => 'Sign in'));
 		$html = curl_exec($this->_ch);
+		
+		// Check if Google requires verification.
+		if (strpos($html, 'value="RecoveryEmailChallenge"') !== false)
+		{
+			if (is_null($this->_recoveryEmail))
+				throw new Exception('Google needs to verify your recovery email address. Pass it through your GoogleVoice() function as a third argument.');
+			else
+			{
+				curl_setopt($this->_ch, CURLOPT_URL, 'https://accounts.google.com/LoginVerification');
+				curl_setopt($this->_ch, CURLOPT_POST, TRUE);
+				curl_setopt($this->_ch, CURLOPT_POSTFIELDS, array(
+					'continue' => 'https://www.google.com/voice',
+					'service' => 'grandcentral',
+					'signIn' => 'Sign in',
+					'challengetype' => 'RecoveryEmailChallenge',
+					'emailAnswer' => $this->_recoveryEmail));
+				$html = curl_exec($this->_ch);
+			}
+		}
 
 		// Test if the service login was successful.
 		if(preg_match('/name="_rnr_se" (.*) value="(.*)"/', $html, $matches)) {
